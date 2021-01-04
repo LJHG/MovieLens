@@ -1,13 +1,24 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify,request
 import pymongo
 import pandas as pd
 import numpy as np
+from tagRecommendUtils import recommend_by_groups,itemsPaging
+import json
 
 app = Flask(__name__)
 # 连接数据库
 client = pymongo.MongoClient(
-    "mongodb://movie1:123@49.235.186.44:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false"
+    "mongodb://movie3:123@49.235.186.44:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false"
 )
+
+groups = {
+    1:{'tags':['sci-fi','surreal','space'],'count':0},
+    2:{'tags':['action','superhero','visually appealing'],'count':0},
+    3:{'tags':['comedy','dark comedy','funny'],'count':1},
+    4:{'tags':['twist ending','mindfuck','nonlinear'],'count':1},
+    5:{'tags':['romance','animation','music'],'count':1},
+    6:{'tags':['classic','cinematography','masterpiece'],'count':0},
+}
 
 
 def success(data):
@@ -29,6 +40,24 @@ def hello_world():
     # dic = {"name": "Bob", "properties": {"age": "18", "gender": "male"}}
     return success(test_data)
 
+@app.route('/profile/settings/pick-groups',methods=['POST'])
+def add_tag_points():
+    data = request.get_data()
+    json_data = json.loads(data.decode("utf-8"))
+    groups[1]['count'] = json_data['group1']
+    groups[2]['count'] = json_data['group2']
+    groups[3]['count'] = json_data['group3']
+    groups[4]['count'] = json_data['group4']
+    groups[5]['count'] = json_data['group5']
+    groups[6]['count'] = json_data['group6']
+    return success(groups)
+
+@app.route('/explore/tags-picks/<curPage>/<pageItemsNum>')
+def tag_picks_recommendation(curPage,pageItemsNum):
+    all_movies = recommend_by_groups(groups)
+    page_movies,total_page_num,total_num = itemsPaging(all_movies,int(pageItemsNum),int(curPage))
+    data = {'movies':page_movies,'total_page_num':total_page_num,'total_num':total_num}
+    return success(data)
 
 """
 # serialize 1D array x
