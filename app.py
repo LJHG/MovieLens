@@ -59,6 +59,39 @@ def tag_picks_recommendation(curPage,pageItemsNum):
     data = {'movies':page_movies,'total_page_num':total_page_num,'total_num':total_num}
     return success(data)
 
+@app.route('/profile/get-one-rating/<movieId>')
+def get_one_rating(movieId):
+    db = client.movielens
+    obj = db.my_rating.find_one({'movieId':int(movieId)})
+    return success({'movieId':obj['movieId'],'rating':obj['rating']})
+
+
+@app.route('/profile/rate',methods=['POST'])
+def rate_movie():
+    data = request.get_data()
+    json_data = json.loads(data.decode("utf-8"))
+    movieId = json_data['movieId']
+    rating = json_data['rating']
+    db = client.movielens
+
+    # 先去查询
+    obj = db.my_rating.find_one({'movieId': int(movieId)})
+    if(obj != None):
+        # 如果已经存在
+        db.my_rating.update_one({'movieId':movieId},{'$set':{'rating':rating}})
+    else:
+        db.my_rating.insert_one({'movieId':movieId,'rating':rating})
+    return success("ok")
+
+
+@app.route('/profile/about-your-ratings')
+def get_my_ratings():
+    db = client.movielens
+    ratings = db.my_rating.find()
+    rating_list = []
+    for rating in ratings:
+        rating_list.append({'movieId':rating['movieId'],'rating':rating['rating']})
+    return success(rating_list)
 """
 # serialize 1D array x
 record['feature1'] = x.tolist()
