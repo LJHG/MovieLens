@@ -1,53 +1,61 @@
-
+import json
 import traceback
-from flask import Flask, jsonify,request
-import pymongo
+
 import pandas as pd
+
+import pymongo
+from flask import Flask, jsonify, request
+
+from svdRecommendUtils import SVD
+from tagRecommendUtils import recommend_by_groups, itemsPaging,get_movies_by_tag,get_groups_info_fromdb
+
 import numpy as np
-from tagRecommendUtils import recommend_by_groups,itemsPaging
+
 import json
 import random
+from flask_cors import * #导入跨域模块
 
 app = Flask(__name__)
+CORS(app, supports_credentials=True)  # 设置跨域
 # 连接数据库
 client = pymongo.MongoClient(
     "mongodb://movie3:123@49.235.186.44:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false"
 )
 
-
 db = client.movielens
 
-genres = [
-    'action',
-    'adventure',
-    'animation',
-    'children',
-    'comedy',
-    'crime',
-    'documentary',
-    'drama',
-    'film-noir',
-    'horror',
-    'musical',
-    'mystery',
-    'romance',
-    'sci-fi',
-    'thriller',
-    'war',
-    'western',
-    'no-genres-listed',
-]
+genres = {
+    'action': 'Action',
+    'adventure': 'Adventure',
+    'animation': 'Animation',
+    'children': 'Children',
+    'comedy': 'Comedy',
+    'crime': 'Crime',
+    'documentary': 'Documentary',
+    'drama': 'Drama',
+    'film-noir': 'Film-Noir',
+    'horror': 'Horror',
+    'musical': 'Musical',
+    'mystery': 'Mystery',
+    'romance': 'Romance',
+    'sci-fi': 'Sci-Fi',
+    'thriller': 'Thriller',
+    'war': 'War',
+    'western': 'Western',
+    'no-genres-listed': '(no genres listed)',
+}
 
 
 groups = {
-    1:{'tags':['sci-fi','surreal','space'],'count':0},
-    2:{'tags':['action','superhero','visually appealing'],'count':0},
-    3:{'tags':['comedy','dark comedy','funny'],'count':1},
-    4:{'tags':['twist ending','mindfuck','nonlinear'],'count':1},
-    5:{'tags':['romance','animation','music'],'count':1},
-    6:{'tags':['classic','cinematography','masterpiece'],'count':0},
+    1: {'tags': ['sci-fi', 'surreal', 'space'], 'count': 0},
+    2: {'tags': ['action', 'superhero', 'visually appealing'], 'count': 0},
+    3: {'tags': ['comedy', 'dark comedy', 'funny'], 'count': 1},
+    4: {'tags': ['twist ending', 'mindfuck', 'nonlinear'], 'count': 1},
+    5: {'tags': ['romance', 'animation', 'music'], 'count': 1},
+    6: {'tags': ['classic', 'cinematography', 'masterpiece'], 'count': 0},
 }
 
+# svd = SVD("C:\\Users\\mayn\\Desktop\\专业综合设计\\model")
 
 
 def success(data):
@@ -78,8 +86,17 @@ def hello_world():
     # dic = {"name": "Bob", "properties": {"age": "18", "gender": "male"}}
     return success(test_data)
 
-@app.route('/profile/settings/pick-groups',methods=['POST'])
+
+@app.route('/profile/settings/pick-groups', methods=['POST'])
 def add_tag_points():
+    # data形式：{
+    #     "group1":0,
+    #     "group2":1,
+    #     "group3":1,
+    #     "group4":0,
+    #     "group5":0,
+    #     "group6":1
+    # }
     data = request.get_data()
     json_data = json.loads(data.decode("utf-8"))
     groups[1]['count'] = json_data['group1']
@@ -90,6 +107,16 @@ def add_tag_points():
     groups[6]['count'] = json_data['group6']
     return success(groups)
 
+@app.route('/profile/setting/get-groups-info')
+def get_groups_info():
+    '''
+    选择分组页面的六个类别各自的代表电影信息
+    返回 [[movie1,movie2,movie3]....]
+    :return:
+    '''
+    data = get_groups_info_fromdb(db)
+    return success(data)
+
 @app.route('/explore/top-picks')
 def top_picks():
     random_id = random.sample(range(0, 100), 8)  # 随机选8个
@@ -99,6 +126,7 @@ def top_picks():
         for l in list(obj):
             topPick.append(l)
     return success(topPick)
+
 
 
 @app.route('/explore/top-picks/<PageNum>')
@@ -151,19 +179,20 @@ def movie_similar_Page(movieId, PageNum):
 
 
 
-@app.route('/explore/tags-picks/<curPage>/<pageItemsNum>')
-def tag_picks_recommendation(curPage,pageItemsNum):
-    all_movies = recommend_by_groups(groups)
-    page_movies,total_page_num,total_num = itemsPaging(all_movies,int(pageItemsNum),int(curPage))
-    data = {'movies':page_movies,'total_page_num':total_page_num,'total_num':total_num}
+
+@app.route('/explore/tags-picks/<int:curPage>/<int:pageItemsNum>')
+def tag_picks_recommendation(curPage, pageItemsNum):
+    all_movies = recommend_by_groups(groups,db)
+    page_movies, total_page_num, total_num = itemsPaging(all_movies, pageItemsNum, curPage)
+    data = {'movies': page_movies, 'total_page_num': total_page_num, 'total_num': total_num}
+
     return success(data)
 
-@app.route('/profile/get-one-rating/<movieId>')
-def get_one_rating(movieId):
-    db = client.movielens
-    obj = db.my_rating.find_one({'movieId':int(movieId)})
-    return success({'movieId':obj['movieId'],'rating':obj['rating']})
 
+@app.route('/profile/get-one-rating/<int:movieId>')
+def get_one_rating(movieId):
+    obj = db.my_rating.find_one({'_id': movieId})
+    return success({'movieId': obj['_id'], 'rating': obj['rating']})
 
 
 @app.route('/explore/genres/<string:genre>', defaults={'page': 1})
@@ -172,56 +201,93 @@ def explore_genres(genre, page):
     item_per_page = 20
     # 先lower
     genre = genre.lower()
-    if genre not in genres:
+    if not genres.__contains__(genre):
         return error(f"genre {genre} not found")
-    # print("request", genre, page)
-    res = db[f"movie_genre_{genre}"].find({}, {"_id": 0}).sort([("count", -1), ("avg-rating", -1)]).skip(
-        item_per_page * (page - 1)).limit(item_per_page)
+    res = db.movie_info.find({'genre': genres[genre]}).sort([
+        ("aggregatingRating.ratingCount", -1),
+        ("aggregatingRating.ratingValue", -1)]).skip(item_per_page * (page - 1)).limit(item_per_page)
     return success(list(res))
 
 
-
-@app.route('/profile/rate',methods=['POST'])
+@app.route('/profile/rate', methods=['POST'])
 def rate_movie():
-    data = request.get_data()
-    json_data = json.loads(data.decode("utf-8"))
-    movieId = json_data['movieId']
-    rating = json_data['rating']
-    db = client.movielens
-
-    # 先去查询
-    obj = db.my_rating.find_one({'movieId': int(movieId)})
-    if(obj != None):
-        # 如果已经存在
-        db.my_rating.update_one({'movieId':movieId},{'$set':{'rating':rating}})
-    else:
-        db.my_rating.insert_one({'movieId':movieId,'rating':rating})
-    return success("ok")
+    if request.method == "POST":
+        data = request.form.to_dict()
+        # print(data.decode("utf-8"))
+        # json_data = json.loads(data.decode("utf-8"))
+        movieId = int(data['movieId'])
+        rating = float(data['rating'])
+        print(f"movieId {movieId} rating {rating}")
+        # 先去查询 本质就是一个insert or update
+        res = db.my_rating.update_one({'_id': movieId}, {
+            '$set': {'rating': rating},
+            '$setOnInsert': {
+                # 当用户对其评分不存在的时候就插入一个
+                '_id': movieId
+            }
+        }, upsert=True)
+        print(res.modified_count)
+        if res.modified_count == 0:
+            # 如果没有变化就不需要重新进行计算
+            print("no change")
+            return success("ok")
+        # 开启多线程计算用户推荐的电影
+        ratings = db.my_rating.find()
+        df = pd.DataFrame.from_dict(ratings)
+        # 计算
+        pred, unrate_pred = svd.partial_fit(df)
+        db.svd_predict.update_one({'_id': 0}, {
+            "$set": {'predict': pred},
+            "$setOnInsert": {'_id': 0}
+        }, upsert=True)
+        # 插入之后执行一下aggregate就行了
+        db.svd_predict.aggregate([
+            {
+                '$project': {
+                    '_id': 0
+                }
+            }, {
+                '$unwind': {
+                    'path': '$predict',
+                    'includeArrayIndex': '_id',
+                    'preserveNullAndEmptyArrays': False
+                }
+            }, {
+                '$lookup': {
+                    'from': 'movie_info',
+                    'localField': 'predict.index',
+                    'foreignField': '_id',
+                    'as': 'movieInfo'
+                }
+            }, {
+                '$unwind': {
+                    'path': '$movieInfo',
+                    'preserveNullAndEmptyArrays': False
+                }
+            }, {
+                '$out': 'svd_result'
+            }
+        ])
+        return success("ok")
+        # 当用户评分完就要去更新
+    return error(f"unsupported request method {request.method}")
 
 
 @app.route('/profile/about-your-ratings')
 def get_my_ratings():
-    db = client.movielens
     ratings = db.my_rating.find()
-    rating_list = []
-    for rating in ratings:
-        rating_list.append({'movieId':rating['movieId'],'rating':rating['rating']})
+    rating_list = [{'movieId': rating['_id'], 'rating': rating['rating']} for rating in ratings]
     return success(rating_list)
 
-"""
-# serialize 1D array x
-record['feature1'] = x.tolist()
 
-# deserialize 1D array x
-x = np.fromiter( record['feature1'] )
-对于多维数组，你需要使用pickle和pymongo.binary.Binary：
-
-# serialize 2D array y
-record['feature2'] = pymongo.binary.Binary( pickle.dumps( y, protocol=2) ) )
-
-# deserialize 2D array y
-y = pickle.loads( record['feature2'] )
-"""
+@app.route('/explore/svd-picks', defaults={'page': 1})
+@app.route('/explore/svd-picks/<int:page>')
+def svd_picks(page: int):
+    item_per_page = 20
+    # 先lower
+    res = db.svd_result.find({}, {"_id": 0}).skip(item_per_page * (page - 1)).limit(item_per_page)
+    return success(list(res))
+    # 需要读取数据
 
 
 @app.errorhandler(Exception)
