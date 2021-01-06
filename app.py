@@ -104,7 +104,8 @@ def top_picks():
 @app.route('/explore/top-picks/<PageNum>')
 def top_picks_Page(PageNum):
     PageMax = 24
-    obj = db.top_movie.find({}, {"_id": 0}).limit( PageMax ).skip( (int(PageNum) - 1) * PageMax )
+    mvMax = 3931 - (int(PageNum) - 1) * PageMax
+    obj = db.top_movie.find({}, {"_id": 0}).limit( min(mvMax,PageMax) ).skip( (int(PageNum) - 1) * PageMax )
     return success(list(obj))
 
 @app.route('/explore/rate-more')
@@ -121,19 +122,20 @@ def rate_more():
 @app.route('/explore/rate-more/<PageNum>')
 def rate_more_Page(PageNum):
     PageMax = 24
-    obj = db.ratings_m100.find({}, {"_id": 0}).limit( PageMax ).skip( (int(PageNum) - 1) * PageMax )
+    tagMax = 10500 - (int(PageNum) - 1) * PageMax
+    obj = db.ratings_m100.find({}, {"_id": 0}).limit( min(tagMax,PageMax) ).skip( (int(PageNum) - 1) * PageMax )
     return success(list(obj))
 
 
 @app.route('/movies/<movieId>/tags')
 def movie_tags(movieId):
-    obj = db.tag_movie_tags.find_one({'movie_id':int(movieId)})
-    return success({'movie_id': obj['movie_id'], 'tag_list': obj['tag_list']})
+    obj = db.tag_movie_60tags.find_one({'_id':int(movieId)})
+    return success({'movie_id': obj['_id'], 'tag_list': obj['tag_list']})
 
 @app.route('/movies/<movieId>/similar')
 def movie_similar(movieId):
     random_id = random.sample(range(0, 64), 8)  # 随机选8个
-    obj = db.similar_movie.find_one({'movie_id': int(movieId)})
+    obj = db.similar_movie_svd.find_one({'movie_id': int(movieId)})
     similar_id = obj['similar_id']
     similarPick = []
     for i in random_id:
@@ -143,8 +145,9 @@ def movie_similar(movieId):
 @app.route('/movies/<movieId>/similar/<PageNum>')
 def movie_similar_Page(movieId, PageNum):
     PageMax = 24
-    obj = db.similar_movie.find_one( {'movie_id': int(movieId)} )
-    return success(obj['similar_id'][(int(PageNum) - 1) * PageMax : int(PageNum) * PageMax])
+    obj = db.similar_movie_svd.find_one( {'movie_id': int(movieId)} )
+    Lmax = len(obj['similar_id']) - 1
+    return success(obj['similar_id'][(int(PageNum) - 1) * PageMax : min(int(PageNum) * PageMax, Lmax) ] )
 
 
 
