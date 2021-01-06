@@ -2,10 +2,13 @@ from flask import Flask, jsonify,request
 import pymongo
 import pandas as pd
 import numpy as np
-from tagRecommendUtils import recommend_by_groups,itemsPaging
+from tagRecommendUtils import recommend_by_groups,itemsPaging,get_movies_by_tag,get_groups_info_fromdb
 import json
+from flask_cors import * #导入跨域模块
 
 app = Flask(__name__)
+CORS(app, supports_credentials=True)  # 设置跨域
+
 # 连接数据库
 client = pymongo.MongoClient(
     "mongodb://movie3:123@49.235.186.44:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false"
@@ -42,6 +45,14 @@ def hello_world():
 
 @app.route('/profile/settings/pick-groups',methods=['POST'])
 def add_tag_points():
+    # data形式：{
+    #     "group1":0,
+    #     "group2":1,
+    #     "group3":1,
+    #     "group4":0,
+    #     "group5":0,
+    #     "group6":1
+    # }
     data = request.get_data()
     json_data = json.loads(data.decode("utf-8"))
     groups[1]['count'] = json_data['group1']
@@ -51,6 +62,17 @@ def add_tag_points():
     groups[5]['count'] = json_data['group5']
     groups[6]['count'] = json_data['group6']
     return success(groups)
+
+@app.route('/profile/setting/get-groups-info')
+def get_groups_info():
+    '''
+    选择分组页面的六个类别各自的代表电影信息
+    返回 [[movie1,movie2,movie3]....]
+    :return:
+    '''
+    data = get_groups_info_fromdb()
+    return success(data)
+
 
 @app.route('/explore/tags-picks/<curPage>/<pageItemsNum>')
 def tag_picks_recommendation(curPage,pageItemsNum):
