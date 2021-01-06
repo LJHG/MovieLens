@@ -45,20 +45,6 @@ genres = {
     'no-genres-listed': '(no genres listed)',
 }
 
-mv_top100_idList = [159817,    318, 174053,    858,     50,   1221,    527,   2019,
-         1203,    904,   2959,   1193,    912,    750,   5618,   1212,
-         1178,    908,  44555,   3435,    922,   6016,   3030,   1213,
-          296,  58559,    926,    930,   2324,  79132,   1260,   1284,
-         4226,   1207,   1252,    593,   1248,    950,   2571,   5971,
-         1136,   1217,   1234,   2329, 160718,    905,   1196,    913,
-         3134,   1147, 112552,  92259,   1148,   1945,   2203,   5291,
-         1197, 163134,  86504,   3000,   1172,   1254,   2858,   2186,
-         1198,    260,   1201,   2920,  48516,    903,   4973,    541,
-         1280,   3089,   3307,   1204,   6669,    898,    745,   2731,
-         1208,   1949,   2351,    608,   1233,   1209,   2905,  98491,
-         1131,   7153,   3022,   1262,   7327,   3429,   4993, 116897,
-         2859,   3462,   5690,    951]
-
 
 groups = {
     1: {'tags': ['sci-fi', 'surreal', 'space'], 'count': 0},
@@ -133,19 +119,73 @@ def get_groups_info():
 
 @app.route('/explore/top-picks')
 def top_picks():
-    random_id = random.sample(range(0, 100), 8) #随机选8个
+    random_id = random.sample(range(0, 100), 8)  # 随机选8个
     topPick = []
-    cnt = 1
     for i in random_id:
-        topPick.append( {f'movie{cnt}:' : mv_top100_idList[i]} )
-        cnt += 1
+        obj = db.top_movie.find({}, {"_id": 0}).limit(1).skip(i)
+        for l in list(obj):
+            topPick.append(l)
     return success(topPick)
+
+
+
+@app.route('/explore/top-picks/<PageNum>')
+def top_picks_Page(PageNum):
+    PageMax = 24
+    mvMax = 3931 - (int(PageNum) - 1) * PageMax
+    obj = db.top_movie.find({}, {"_id": 0}).limit( min(mvMax,PageMax) ).skip( (int(PageNum) - 1) * PageMax )
+    return success(list(obj))
+
+@app.route('/explore/rate-more')
+def rate_more():
+    random_id = random.sample(range(0, 10500), 8)  # 随机选8个
+    ratePick = []
+    for i in random_id:
+        obj = db.ratings_m100.find({}, {"_id":0}).limit( 1 ).skip( i )
+        for l in list(obj):
+            ratePick.append( l )
+    return success(ratePick)
+
+
+@app.route('/explore/rate-more/<PageNum>')
+def rate_more_Page(PageNum):
+    PageMax = 24
+    tagMax = 10500 - (int(PageNum) - 1) * PageMax
+    obj = db.ratings_m100.find({}, {"_id": 0}).limit( min(tagMax,PageMax) ).skip( (int(PageNum) - 1) * PageMax )
+    return success(list(obj))
+
+
+@app.route('/movies/<movieId>/tags')
+def movie_tags(movieId):
+    obj = db.tag_movie_60tags.find_one({'_id':int(movieId)})
+    return success({'movie_id': obj['_id'], 'tag_list': obj['tag_list']})
+
+@app.route('/movies/<movieId>/similar')
+def movie_similar(movieId):
+    random_id = random.sample(range(0, 64), 8)  # 随机选8个
+    obj = db.similar_movie_svd.find_one({'movie_id': int(movieId)})
+    similar_id = obj['similar_id']
+    similarPick = []
+    for i in random_id:
+        similarPick.append(similar_id[i])
+    return success(similarPick)
+
+@app.route('/movies/<movieId>/similar/<PageNum>')
+def movie_similar_Page(movieId, PageNum):
+    PageMax = 24
+    obj = db.similar_movie_svd.find_one( {'movie_id': int(movieId)} )
+    Lmax = len(obj['similar_id']) - 1
+    return success(obj['similar_id'][(int(PageNum) - 1) * PageMax : min(int(PageNum) * PageMax, Lmax) ] )
+
+
+
 
 @app.route('/explore/tags-picks/<int:curPage>/<int:pageItemsNum>')
 def tag_picks_recommendation(curPage, pageItemsNum):
     all_movies = recommend_by_groups(groups,db)
     page_movies, total_page_num, total_num = itemsPaging(all_movies, pageItemsNum, curPage)
     data = {'movies': page_movies, 'total_page_num': total_page_num, 'total_num': total_num}
+
     return success(data)
 
 
