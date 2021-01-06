@@ -59,42 +59,81 @@ def get_movie_genres():
 
 
 class movieInfoSchema(object):
-    def __init__(self, _id: int, imdbId: str, tmdbId: str, infoDict: dict):
+    def __init__(self, _id: int, imdbId: str, tmdbId: str, innerId: str, genres: str, ratingCount, ratingValue,
+                 bestRating, worstRating, infoDict: dict):
         self._id = _id
+        self.innerId = int(innerId)
         self.imdbId = imdbId
         self.tmdbId = tmdbId
         self.name = infoDict['name']
-        self.image = infoDict['image']
-        # 处理list
-        self.genre = infoDict['genre']
-        self.contentRating = infoDict['contentRating']
-        # 处理list
-        self.actor = infoDict['actor']
-        # 处理list
-        self.director = infoDict['director']
-        self.description = infoDict['description']
-        self.datePublished = infoDict['datePublished']
-        # 有可能是timeRequired
-        if infoDict.get('duration', None) is None:
-            self.duration = infoDict['timeRequired']
+        if infoDict.__contains__('image'):
+            self.image = infoDict['image']
         else:
+            self.image = None
+
+        self.genre = genres.split('|')
+        # 处理list
+        if infoDict.__contains__('contentRating'):
+            self.contentRating = infoDict['contentRating']
+        else:
+            self.contentRating = 'Not Rated'
+        # 处理list
+        if infoDict.__contains__('actor'):
+            self.actor = infoDict['actor']
+        else:
+            self.actor = None
+        # 处理list
+
+        if infoDict.__contains__('director'):
+            self.director = infoDict['director']
+        else:
+            self.director = None
+
+        if infoDict.__contains__('creator'):
+            self.creator = infoDict['creator']
+        else:
+            self.creator = None
+
+        if infoDict.__contains__('description'):
+            self.description = infoDict['description']
+        else:
+            self.description = None
+
+        if infoDict.__contains__('datePublished'):
+            self.datePublished = infoDict['datePublished']
+        else:
+            self.datePublished = None
+
+        # 有可能是timeRequired
+        if infoDict.__contains__('timeRequired'):
+            self.duration = infoDict['timeRequired']
+        elif infoDict.__contains__('duration'):
             self.duration = infoDict['duration']
-        # self.duration = infoDict['duration']
-        self.keywords = infoDict['keywords'].split(',')
-        # self.aggregateRating = {
-        #     "ratingCount": 0,
-        #     "bestRating": "0.0",
-        #     "worstRating": "0.0",
-        #     "ratingValue": "0.0"
-        # }
-        self.keywords = infoDict['aggregateRating']
-        # self.trailer = {
-        #     "embedUrl": "",
-        #     "thumbnail": {
-        #         "contentUrl": ""
-        #     },
-        #     "thumbnailUrl": "",
-        # }
+        else:
+            self.duration = None
+
+        if infoDict.__contains__('keywords'):
+            self.keywords = infoDict['keywords'].split(',')
+        else:
+            self.keywords = None
+
+        self.aggregateRating = {
+            "@type": "AggregateRating",
+            "ratingCount": int(ratingCount),
+            "bestRating": bestRating,
+            "worstRating": worstRating,
+            "ratingValue": ratingValue
+        }
+
+        if infoDict.__contains__('trailer'):
+            self.trailer = infoDict['trailer']
+        else:
+            self.trailer = None
+
+        if infoDict.__contains__('review'):
+            self.review = infoDict['review']
+        else:
+            self.review = None
 
     def to_dict(self):
         return self.__dict__
@@ -104,27 +143,83 @@ class movieInfoSchema(object):
 
 
 def movie_info_preprocess():
+    client = pymongo.MongoClient(
+        'mongodb://movie1:123@49.235.186.44:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false')
+    db = client['movielens']
     # 测试序列化方法
     DATA_PATH = Path("C:\\Users\\mayn\\Desktop\\专业综合设计\\data\\ml-latest")
     movie_data = DATA_PATH / "links.csv"
+    info_data = DATA_PATH / "movies.csv"
+    ratings_data = DATA_PATH / "ratings.csv"
+    MODEL_PATH = Path("C:\\Users\\mayn\\Desktop\\专业综合设计\\model")
+    rawid_data = MODEL_PATH / "rawids.csv"
 
     movie_data_df = pd.read_csv(movie_data,
                                 usecols=["movieId", "imdbId", "tmdbId"],
                                 dtype={"movieId": int, "imdbId": str, "tmdbId": str},
                                 index_col="movieId")
 
-    print(movie_data_df.info())
+    rawid_data_df = pd.read_csv(rawid_data,
+                                usecols=['movieId', 'innerId'],
+                                dtype={"movieId": int, "innerId": str},
+                                index_col="movieId")
+
+    movie_info_df = pd.read_csv(info_data,
+                                usecols=['movieId', 'genres'],
+                                dtype={"movieId": int, "genres": str},
+                                index_col="movieId")
+
+    ratings_data_df = pd.read_csv(ratings_data,
+                                  usecols=["userId", "movieId", "rating"],
+                                  dtype={"userId": np.int32, "movieId": np.int32, "rating": np.float32})
+    movie_ratings_group = ratings_data_df.groupby(by="movieId")
+    movie_avg_ratings = movie_ratings_group.agg(
+        ratingCount=pd.NamedAgg(column="rating", aggfunc='count'),
+        ratingValue=pd.NamedAgg(column="rating", aggfunc='mean'),
+        bestRating=pd.NamedAgg(column="rating", aggfunc='max'),
+        worstRating=pd.NamedAgg(column="rating", aggfunc='min')
+    )
+
+    rawid_data_df.info()
+    movie_info_df.info()
+    movie_data_df = movie_data_df.join(rawid_data_df)
+    movie_data_df = movie_data_df.join(movie_info_df)
+    movie_data_df = movie_data_df.join(movie_avg_ratings)
+
+    movie_data_df.loc[movie_data_df['innerId'].isna(), 'innerId'] = "-1"
+    movie_data_df.loc[movie_data_df['tmdbId'].isna(), 'tmdbId'] = "-1"
+
+    na_ratings = movie_data_df['ratingCount'].isna()
+
+    movie_data_df.loc[na_ratings, 'ratingCount'] = -1.0
+    movie_data_df.loc[na_ratings, 'ratingValue'] = -1.0
+    movie_data_df.loc[na_ratings, 'bestRating'] = -1.0
+    movie_data_df.loc[na_ratings, 'worstRating'] = -1.0
+
+    movie_data_df.info()
     JSON_PATH = Path("C:\\Users\\mayn\\Desktop\\专业综合设计\\imdb\\imdb\\spiders\\json")
-    for movieId, imdbId, tmdbId in movie_data_df.itertuples():
+    cnt = 1
+    batch = []
+    for movieId, imdbId, tmdbId, innerId, genres, ratingCount, ratingValue, bestRating, worstRating in movie_data_df.itertuples():
         filename = JSON_PATH / f"{imdbId}.json"
         if filename.exists():
-            print("read file", filename.name)
+            # print("read file", filename.name)
             jsonfile = json.load(filename.open(encoding='utf8', mode='r'))
             # print()
-            movieInfoSchema(movieId, imdbId, tmdbId, jsonfile)
+            info = movieInfoSchema(movieId, imdbId, tmdbId, innerId, genres, ratingCount, ratingValue, bestRating, worstRating,
+                            jsonfile)
+            batch.append(info.to_dict())
+            if cnt % 1000 == 0:
+                db['movie_info'].insert_many(batch)
+                batch.clear()
+                print(f'check point {cnt}')
+            cnt += 1
         else:
             print("file not exist", filename.name)
-
+    # 最后还要插入一遍
+    db['movie_info'].insert_many(batch)
+    batch.clear()
+    print(f'check point {cnt}')
 
 if __name__ == '__main__':
     # Requires the PyMongo package.
