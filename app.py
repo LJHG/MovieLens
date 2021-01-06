@@ -2,11 +2,18 @@ import json
 import traceback
 
 import pandas as pd
+
 import pymongo
 from flask import Flask, jsonify, request
 
 from svdRecommendUtils import SVD
 from tagRecommendUtils import recommend_by_groups, itemsPaging
+
+import numpy as np
+
+import json
+import random
+
 
 app = Flask(__name__)
 # 连接数据库
@@ -36,6 +43,21 @@ genres = {
     'western': 'Western',
     'no-genres-listed': '(no genres listed)',
 }
+
+mv_top100_idList = [159817,    318, 174053,    858,     50,   1221,    527,   2019,
+         1203,    904,   2959,   1193,    912,    750,   5618,   1212,
+         1178,    908,  44555,   3435,    922,   6016,   3030,   1213,
+          296,  58559,    926,    930,   2324,  79132,   1260,   1284,
+         4226,   1207,   1252,    593,   1248,    950,   2571,   5971,
+         1136,   1217,   1234,   2329, 160718,    905,   1196,    913,
+         3134,   1147, 112552,  92259,   1148,   1945,   2203,   5291,
+         1197, 163134,  86504,   3000,   1172,   1254,   2858,   2186,
+         1198,    260,   1201,   2920,  48516,    903,   4973,    541,
+         1280,   3089,   3307,   1204,   6669,    898,    745,   2731,
+         1208,   1949,   2351,    608,   1233,   1209,   2905,  98491,
+         1131,   7153,   3022,   1262,   7327,   3429,   4993, 116897,
+         2859,   3462,   5690,    951]
+
 
 groups = {
     1: {'tags': ['sci-fi', 'surreal', 'space'], 'count': 0},
@@ -90,6 +112,16 @@ def add_tag_points():
     groups[6]['count'] = json_data['group6']
     return success(groups)
 
+
+@app.route('/explore/top-picks')
+def top_picks():
+    random_id = random.sample(range(0, 100), 8) #随机选8个
+    topPick = []
+    cnt = 1
+    for i in random_id:
+        topPick.append( {f'movie{cnt}:' : mv_top100_idList[i]} )
+        cnt += 1
+    return success(topPick)
 
 @app.route('/explore/tags-picks/<int:curPage>/<int:pageItemsNum>')
 def tag_picks_recommendation(curPage, pageItemsNum):
