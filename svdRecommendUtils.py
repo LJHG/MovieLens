@@ -33,12 +33,6 @@ class SVD(object):
         # 一来就给他初始化
         self.user_bias, self.user_factor = self.gen_user_params()
 
-        self.rawids = pd.read_csv(Path(model_path) / "rawids.csv", index_col='movieId',
-                                  dtype={"movieId": int, "innerId": int})
-
-        # np.savez(self.model_path , movie_bias=self.movie_bias, movie_factor=self.movie_factor,
-        #          global_mean=self.global_mean, map_index=self.map_index)
-
     # 将每一个movie_facotr直接存储到movieInfo中，就可以计算出评分
     def save_movie_factor(self):
         client = pymongo.MongoClient(
