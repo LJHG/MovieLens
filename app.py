@@ -50,7 +50,9 @@ groups = {
     6: {'tags': ['classic', 'cinematography', 'masterpiece'], 'count': 0},
 }
 
-svd = SVD("C:\\Users\\mayn\\Desktop\\专业综合设计\\model")
+svd = SVD("model")
+
+mode = 1
 
 executor = ThreadPoolExecutor(max_workers=2)
 
@@ -122,21 +124,56 @@ def get_groups_info():
 
 @app.route('/explore/top-picks')
 def top_picks():
-    random_size = 12
-    obj = db.top_movie.aggregate([{
-        '$limit': 100
-    }, {
-        '$sample': {
-            'size': random_size
-        }
-    }])
-    return success(list(obj))
+    res = None
+
+    if(mode ==1 ):
+        random_size = 12
+        obj = db.top_movie.aggregate([{
+            '$limit': 100
+        }, {
+            '$sample': {
+                'size': random_size
+            }
+        }])
+        res = list(obj)
+    elif(mode == 2):
+        tmp_res = json.loads(tag_picks_recommendation(1).data)['data'][0:12]
+        obj = []
+        for item in tmp_res:
+            obj.append({'_id':item['movieId']})
+        res = obj
+    else:
+        res = json.loads(svd_picks(1).data)['data'][0:12]
+    return success(res)
 
 
 @app.route('/explore/top-picks/<int:page>')
 def top_picks_page(page):
-    obj = db.top_movie.find().skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
-    return success(list(obj))
+    res = None
+    if(mode == 1):
+        obj = db.top_movie.find().skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
+        res = list(obj)
+    elif(mode == 2):
+        tmp_res = json.loads(tag_picks_recommendation(page).data)['data']
+        obj = []
+        for item in tmp_res:
+            obj.append({'_id': item['movieId']})
+        res = obj
+    else:
+        res = json.loads(svd_picks(page).data)['data']
+    return success(res)
+
+@app.route('/profile/settings/change-mode/<int:m>')
+def change_mode(m):
+    global mode
+    mode = m
+    print('change mode...',mode)
+    return success("ok")
+
+@app.route('/profile/settings/get-mode')
+def get_mode():
+    print('get mode ...',mode)
+    return success(mode)
 
 
 @app.route('/explore/svd-picks/<int:page>')
@@ -218,7 +255,7 @@ def movie_similar(movieId):
                 'path': '$movieId'
             }
         }, {
-            '$limit': 100
+            '$limit': 20
         }, {
             '$sample': {
                 'size': random_size
@@ -256,9 +293,8 @@ def get_similar_movie(movieId, page):
 def tag_picks_recommendation(page):
     all_movies = recommend_by_groups(groups, db)
     page_movies, total_page_num, total_num = itemsPaging(all_movies, ITEM_PER_PAGE, page)
-    data = {'movies': page_movies, 'total_page_num': total_page_num, 'total_num': total_num}
-
-    return success(data)
+    # data = {'movies': page_movies, 'total_page_num': total_page_num, 'total_num': total_num}
+    return success(page_movies)
 
 
 @app.route('/explore/genres/<string:genre>/<int:page>')
