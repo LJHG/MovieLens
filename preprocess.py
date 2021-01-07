@@ -206,8 +206,9 @@ def movie_info_preprocess():
             # print("read file", filename.name)
             jsonfile = json.load(filename.open(encoding='utf8', mode='r'))
             # print()
-            info = movieInfoSchema(movieId, imdbId, tmdbId, innerId, genres, ratingCount, ratingValue, bestRating, worstRating,
-                            jsonfile)
+            info = movieInfoSchema(movieId, imdbId, tmdbId, innerId, genres, ratingCount, ratingValue, bestRating,
+                                   worstRating,
+                                   jsonfile)
             batch.append(info.to_dict())
             if cnt % 1000 == 0:
                 db['movie_info'].insert_many(batch)
@@ -220,6 +221,7 @@ def movie_info_preprocess():
     db['movie_info'].insert_many(batch)
     batch.clear()
     print(f'check point {cnt}')
+
 
 if __name__ == '__main__':
     # Requires the PyMongo package.

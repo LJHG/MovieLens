@@ -1,7 +1,7 @@
 import json
-import random
-import traceback
 import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import pymongo
@@ -52,6 +52,8 @@ groups = {
 
 svd = SVD("C:\\Users\\mayn\\Desktop\\专业综合设计\\model")
 
+executor = ThreadPoolExecutor(max_workers=2)
+
 ITEM_PER_PAGE = 24
 
 
@@ -87,7 +89,8 @@ def error_handler(e):
 
 @app.route('/profile/settings/pick-groups', methods=['POST'])
 def add_tag_points():
-    # data形式：{
+    # data形式：
+    # {
     #     "group1":0,
     #     "group2":1,
     #     "group3":1,
@@ -106,7 +109,7 @@ def add_tag_points():
     return success(groups)
 
 
-@app.route('/profile/setting/get-groups-info')
+@app.route('/profile/settings/get-groups-info')
 def get_groups_info():
     """
     选择分组页面的六个类别各自的代表电影信息
@@ -119,65 +122,120 @@ def get_groups_info():
 
 @app.route('/explore/top-picks')
 def top_picks():
-    random_id = random.sample(range(0, 100), 8)  # 随机选8个
-    topPick = []
-    for i in random_id:
-        obj = db.top_movie.find({}, {"_id": 0}).limit(1).skip(i)
-        for l in list(obj):
-            topPick.append(l)
-    return success(topPick)
+    random_size = 8
+    obj = db.top_movie.aggregate([{'$sample': {'size': random_size}}])
+    return success(list(obj))
 
 
 @app.route('/explore/top-picks/<int:page>')
 def top_picks_page(page):
-    PageMax = 24
-    mvMax = 3931 - (page - 1) * PageMax
-    obj = db.top_movie.find({}, {"_id": 0}).limit(min(mvMax, PageMax)).skip((page - 1) * PageMax)
+    obj = db.top_movie.find().skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
     return success(list(obj))
+
+
+@app.route('/explore/svd-picks/<int:page>')
+def svd_picks(page: int):
+    res = db.svd_predict.aggregate([
+        {
+            '$project': {
+                '_id': 0,
+                'predict': 1
+            }
+        }, {
+            '$unwind': {
+                'path': '$predict'
+            }
+        }, {
+            '$project': {
+                '_id': '$predict.index',
+                'predict': '$predict.prediction'
+            }
+        }, {
+            '$skip': ITEM_PER_PAGE * (page - 1)
+        }, {
+            '$limit': ITEM_PER_PAGE
+        }
+    ])
+    return success(list(res))
 
 
 @app.route('/explore/rate-more')
 def rate_more():
-    random_id = random.sample(range(0, 10500), 8)  # 随机选8个
-    ratePick = []
-    for i in random_id:
-        obj = db.ratings_m100.find({}, {"_id": 0}).limit(1).skip(i)
-        for l in list(obj):
-            ratePick.append(l)
-    return success(ratePick)
+    # 随机选取
+    random_size = 8
+    obj = db.ratings_m100.aggregate([{'$sample': {'size': random_size}}])
+    return success(list(obj))
 
 
 @app.route('/explore/rate-more/<int:page>')
 def rate_more_page(page):
-    PageMax = 24
-    tagMax = 10500 - (page - 1) * PageMax
-    obj = db.ratings_m100.find({}, {"_id": 0}).limit(min(tagMax, PageMax)).skip((page - 1) * PageMax)
+    obj = db.ratings_m100.find().skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
     return success(list(obj))
+
+
+@app.route('/movies/<int:movieId>')
+def get_movie_info(movieId):
+    # 使用相似度计算
+    movie_info = db.movie_info.find_one({'_id': movieId}, {'bias': 0, 'factor': 0})
+    movie_info['predict'] = svd.predict(movie_info['innerId'])
+    # 计算用户和电影的预测评分
+    return success(movie_info)
 
 
 @app.route('/movies/<int:movieId>/tags')
 def movie_tags(movieId):
     obj = db.tag_movie_60tags.find_one({'_id': movieId})
-    return success({'movie_id': obj['_id'], 'tag_list': obj['tag_list']})
+    return success(obj)
 
 
 @app.route('/movies/<int:movieId>/similar')
 def movie_similar(movieId):
-    random_id = random.sample(range(0, 64), 8)  # 随机选8个
-    obj = db.similar_movie_svd.find_one({'movie_id': movieId})
-    similar_id = obj['similar_id']
-    similarPick = []
-    for i in random_id:
-        similarPick.append(similar_id[i])
-    return success(similarPick)
+    random_size = 8
+    result = db.similar_movie_svd.aggregate([
+        {
+            '$match': {
+                '_id': movieId
+            }
+        }, {
+            '$project': {
+                '_id': 0,
+                'movieId': '$similar_id'
+            }
+        }, {
+            '$unwind': {
+                'path': '$movieId'
+            }
+        }, {
+            '$sample': {
+                'size': random_size
+            }
+        }
+    ])
+    return success(list(result))
 
 
 @app.route('/movies/<int:movieId>/similar/<int:page>')
 def get_similar_movie(movieId, page):
-    PageMax = 24
-    obj = db.similar_movie_svd.find_one({'movie_id': movieId})
-    Lmax = len(obj['similar_id']) - 1
-    return success(obj['similar_id'][(page - 1) * PageMax: min(page * PageMax, Lmax)])
+    result = db.similar_movie_svd.aggregate([
+        {
+            '$match': {
+                '_id': movieId
+            }
+        }, {
+            '$project': {
+                '_id': 0,
+                'movieId': '$similar_id'
+            }
+        }, {
+            '$unwind': {
+                'path': '$movieId'
+            }
+        }, {
+            '$skip': ITEM_PER_PAGE * (page - 1)
+        }, {
+            '$limit': ITEM_PER_PAGE
+        }])
+    return success(list(result))
 
 
 @app.route('/explore/tag-picks/<int:page>')
@@ -195,7 +253,7 @@ def explore_genres(genre, page):
     genre = genre.lower()
     if not genres.__contains__(genre):
         return error(f"genre {genre} not found")
-    res = db.movie_info.find({'genre': genres[genre]}).sort([
+    res = db.movie_info.find({'genre': genres[genre]}, {'_id': 1}).sort([
         ("aggregateRating.ratingCount", -1),
         ("aggregateRating.ratingValue", -1)]).skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
     return success(list(res))
@@ -203,7 +261,7 @@ def explore_genres(genre, page):
 
 @app.route('/profile/rate/<int:movieId>')
 def get_one_rating(movieId):
-    obj = db.my_rating_movies.find_one({'_id': movieId})
+    obj = db.my_rating.find_one({'_id': movieId})
     if obj is None:
         return error(f"no rating info for movie {movieId}")
     return success(obj)
@@ -211,11 +269,10 @@ def get_one_rating(movieId):
 
 @app.route('/profile/rate', methods=['POST'])
 def rate_movie():
-    data = request.form.to_dict()
-    # print(data.decode("utf-8"))
-    # json_data = json.loads(data.decode("utf-8"))
-    movieId = int(data['movieId'])
-    rating = float(data['rating'])
+    data = request.get_data()
+    json_data = json.loads(data.decode("utf-8"))
+    movieId = int(json_data['movieId'])
+    rating = float(json_data['rating'])
     print(f"movieId {movieId} rating {rating}")
     # 先去查询 本质就是一个insert or update
     res = db.my_rating.update_one({'_id': movieId}, {
@@ -227,33 +284,47 @@ def rate_movie():
     }, upsert=True)
     print("modified", res.modified_count)
     print("upserted id", res.upserted_id)
-    if res.upserted_id is None and res.modified_count == 0:
-        # 如果没有变化就不需要重新进行计算
-        print("no change")
-        return success("ok")
+    executor.submit(update_svd)
+    return success("ok")
+
+
+def update_svd():
+    print("background update svd running")
     # 开启多线程计算用户推荐的电影
-    ratings = db.my_rating.find()
-    df = pd.DataFrame.from_dict(ratings)
-    # 计算
+    ratings_cursor = db.my_rating.aggregate([
+        {
+            '$lookup': {
+                'from': 'movie_info',
+                'localField': '_id',
+                'foreignField': '_id',
+                'as': 'movie_info'
+            }
+        }, {
+            '$unwind': {
+                'path': '$movie_info'
+            }
+        }, {
+            '$project': {
+                'innerId': '$movie_info.innerId',
+                'rating': '$rating',
+            }
+        }
+    ])
+    rating_df = pd.DataFrame(ratings_cursor)
     print("partial fit")
-    pred, unrate_pred = svd.partial_fit(df)
+    print(rating_df.info())
+    pred = svd.partial_fit(rating_df)
     db.svd_predict.update_one({'_id': 0}, {
         "$set": {'predict': pred, 'timestamp': int(round(time.time() * 1e3))},
         "$setOnInsert": {'_id': 0}
     }, upsert=True)
-    return success("ok")
 
 
+# 那此处就不明确写出共有多少页，直接不断向下添加就行了
 @app.route('/profile/rates/<int:page>', )
 def get_my_ratings(page):
-    ratings = db.my_rating_movies.find().skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
+    ratings = db.my_rating.find().skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
     return success(list(ratings))
-
-
-@app.route('/explore/svd-picks/<int:page>')
-def svd_picks(page: int):
-    res = db.svd_result.find({}, {"_id": 0}).skip(ITEM_PER_PAGE * (page - 1)).limit(ITEM_PER_PAGE)
-    return success(list(res))
 
 
 if __name__ == '__main__':

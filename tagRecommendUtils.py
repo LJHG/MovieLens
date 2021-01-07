@@ -45,7 +45,7 @@ def recommend_by_groups(groups,db):
         total_points += groups[i]['count']
 
     for i in range(1,7):
-        if(groups[i]['count'] > 0):
+        if groups[i]['count'] > 0:
             for item in groups[i]['tags']:
                 tag_count_dic[item] = groups[i]['count']/(total_points*3)
     print(tag_count_dic)
