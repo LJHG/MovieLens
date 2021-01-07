@@ -122,7 +122,7 @@ def get_groups_info():
 
 @app.route('/explore/top-picks')
 def top_picks():
-    random_size = 8
+    random_size = 12
     obj = db.top_movie.aggregate([{'$sample': {'size': random_size}}])
     return success(list(obj))
 
@@ -162,7 +162,7 @@ def svd_picks(page: int):
 @app.route('/explore/rate-more')
 def rate_more():
     # 随机选取
-    random_size = 8
+    random_size = 12
     obj = db.ratings_m100.aggregate([{'$sample': {'size': random_size}}])
     return success(list(obj))
 

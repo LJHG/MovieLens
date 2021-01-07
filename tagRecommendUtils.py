@@ -14,7 +14,7 @@ def tempCmp(movieItem1, movieItem2):
 
 
 def get_movies_by_tag(tag,db):
-    items = db.tag_movies.find({'tag_name':tag})[0]['info']
+    items = db.tag_movies.find_one({'tag_name':tag})['info']
     items.sort(key=lambda x:x['tag_cnt']*0.999*-1+x['rating_cnt']*0.001*-1)
     return items
 
@@ -110,7 +110,7 @@ def get_groups_info_fromdb(db):
     #     "mongodb://movie3:123@49.235.186.44:27017/?authSource=admin&readPreference=primary&appname=MongoDB%20Compass&ssl=false"
     # )
     # db = client.movielens
-    data = db.group_info.find()[0]['data']
+    data = db.group_info.find_one()['data']
     return data
 
 
