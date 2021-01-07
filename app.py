@@ -123,7 +123,13 @@ def get_groups_info():
 @app.route('/explore/top-picks')
 def top_picks():
     random_size = 12
-    obj = db.top_movie.aggregate([{'$sample': {'size': random_size}}])
+    obj = db.top_movie.aggregate([{
+        '$limit': 100
+    }, {
+        '$sample': {
+            'size': random_size
+        }
+    }])
     return success(list(obj))
 
 
@@ -211,6 +217,8 @@ def movie_similar(movieId):
             '$unwind': {
                 'path': '$movieId'
             }
+        }, {
+            '$limit': 100
         }, {
             '$sample': {
                 'size': random_size
