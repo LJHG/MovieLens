@@ -163,7 +163,13 @@ def svd_picks(page: int):
 def rate_more():
     # 随机选取
     random_size = 12
-    obj = db.ratings_m100.aggregate([{'$sample': {'size': random_size}}])
+    obj = db.ratings_m100.aggregate([{
+        '$limit': 100
+    }, {
+        '$sample': {
+            'size': random_size
+        }
+    }])
     return success(list(obj))
 
 
